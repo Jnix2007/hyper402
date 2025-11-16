@@ -31,9 +31,9 @@ let facilitatorAddress: `0x${string}`;
 async function initializeFacilitator() {
   try {
     // Try to get or create a facilitator account
-    // In production, you'd store the address and reuse it
+    // Using original wallet name to reuse funded wallet from HyperPay
     const account = await cdp.evm.getOrCreateAccount({
-      name: "hyper402-facilitator",
+      name: "hyperpay-facilitator",
     });
     
     facilitatorAddress = account.address;

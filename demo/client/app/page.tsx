@@ -13,7 +13,7 @@ import {
 } from "@coinbase/cdp-hooks";
 import { toViemAccount } from "@coinbase/cdp-core";
 import { createWalletClient, http, publicActions } from "viem";
-import { wrapFetchWithPayment, decodeXPaymentResponse } from "x402-fetch";
+import { makePaidRequest } from "./hyper402-client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3003";
 
@@ -203,26 +203,12 @@ export default function Home() {
         transport: http(),
       }).extend(publicActions);
       
-      // wrap fetch with x402 payment handling
-      // @ts-ignore - viem type compatibility between x402-fetch and latest viem
-      const fetchWithPayment = wrapFetchWithPayment(fetch, walletClient);
+      // Make paid request using custom Hyper402 client
+      const result = await makePaidRequest(`${API_URL}${endpoint}`, walletClient, evmAddress);
       
-      // make the paid request
-      const response = await fetchWithPayment(`${API_URL}${endpoint}`, {
-        method: "GET",
-      });
-      
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
-      }
-      
-      const data: ApiResponse = await response.json();
-      setQuote(data.quote);
-      
-      const paymentResponseHeader = response.headers.get("x-payment-response");
-      if (paymentResponseHeader) {
-        const paymentResponse = decodeXPaymentResponse(paymentResponseHeader);
-        setPaymentInfo(paymentResponse);
+      setQuote(result.data.quote || result.data.fortune || "Success!");
+      if (result.paymentInfo) {
+        setPaymentInfo(result.paymentInfo);
       }
       
       setTimeout(fetchBalance, 2000);

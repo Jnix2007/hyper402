@@ -267,16 +267,29 @@ don't forget to allowlist your domain in CDP Portal under Embedded Wallets! The 
 
 I mostly built Hyper402 on the long flight from Seattle to Buenos Aires, so the scope is limited. There are a ton of future directions I might take this, or that you can feel free to explore! Some ideas below -
 
+### immediate next steps
+
+1. **`@hyper402/client` payment library** - Extract the custom client implementation (`demo/client/app/hyper402-client.ts`) into a reusable npm package:
+   - Clean TypeScript API for x402 payments on custom chains
+   - Works with any EVM chain (not just HyperEVM)
+   - Developers can use it instead of x402-fetch
+   - Pair with any x402 facilitator
+
+2. **`@hyper402/express` server middleware** - Extract the custom server middleware into a package:
+   - Works like x402-express but supports custom EVM chains
+   - API providers get back to 3-line integration
+   - Combined with hosted Hyper402 facilitator = dead-simple
+
 ### production deployment
 
-1. **production HyperEVM facilitator** - Deploy Hyper402 as a production-grade facilitator on HyperEVM mainnet with:
+3. **production HyperEVM facilitator** - Deploy Hyper402 as a production-grade facilitator on HyperEVM mainnet with:
    - fleet of CDP Server Wallets for high throughput and redundancy while minimizing error rate
    - intelligent load balancing across multiple facilitator instances
    - monitoring, alerting, and analytics dashboard
    - rate limiting and abuse prevention
    - uptime SLA guarantees
 
-2. **monetization features** - Turn Hyper402 into a sustainable business:
+4. **monetization features** - Turn Hyper402 into a sustainable business:
    - optional facilitator fees (e.g., 0.1% of transaction value, or flat rate per settled txn)
    - premium tier with higher throughput guarantees
    - analytics and insights for API providers
@@ -284,21 +297,21 @@ I mostly built Hyper402 on the long flight from Seattle to Buenos Aires, so the 
 
 ### advanced features
 
-3. **multi-token support** - accept and disburse in any token:
+5. **multi-token support** - accept and disburse in any token:
    - native token swaps via HyperEVM DEXes
    - users pay in any HyperEVM-supported token they have (USDC, HYPE, wBTC, etc)
    - API providers receive in their preferred token
    - automatic conversion handled by facilitator; neither party has to think about the swap in between
    - route optimization for best swap rates
 
-4. **Looping Collective integration** 🔄 - yield on API revenue:
+6. **Looping Collective integration** 🔄 - yield on API revenue:
    - enable API providers to auto-deposit a % of earnings into a liquid looping strategy like LHYPE
    - earn yield on revenue while maintaining liquidity
    - configurable allocation (e.g. 50% liquid, 50% looped or whatever)
    - dashboard showing revenue + accumulated yield
    - one-click withdrawal from looping positions
 
-5. **HyperCore support** - extend Hyper402 beyond HyperEVM:
+7. **HyperCore support** - extend Hyper402 beyond HyperEVM:
    - implement x402 facilitator for HyperCore (Hyperliquid L1)
    - enable cross-chain payments (pay on HyperCore, settle on HyperEVM)
    - unified facilitator handling both chains with configurability
@@ -306,7 +319,7 @@ I mostly built Hyper402 on the long flight from Seattle to Buenos Aires, so the 
 
 ### ecosystem expansion
 
-6. **discovery layer** - HyperEVM API marketplace:
+8. **discovery layer** - HyperEVM API marketplace:
    - catalog of x402-enabled APIs on HyperEVM
    - searchable by category, price, rating
    - one-click integration for developers
@@ -314,7 +327,7 @@ I mostly built Hyper402 on the long flight from Seattle to Buenos Aires, so the 
 
 ### community & governance
 
-7. **open governance** - decentralize Hyper402:
+9. **open governance** - decentralize Hyper402:
     - DAO for facilitator parameters (fees, supported tokens)
     - community-run facilitator nodes
     - revenue sharing with node operators
@@ -332,56 +345,34 @@ the core contribution here — a working x402 facilitator for HyperEVM — is a 
 - both only allow: Base, Base Sepolia, Solana, Solana Devnet, afaict
 - custom EVM chains like HyperEVM testnet are rejected at BOTH ends
 
-**so what:** to support HyperEVM, I had to:
-1. implement x402 protocol flow manually in the demo server (bypass middleware)
-2. tell client it's "base-sepolia" to pass x402-fetch validation (yeah, hacky)
-3. client creates EIP-712 signature with **actual chain ID 998** from wallet
-4. server translates network back to "hyperevm-testnet" before calling facilitator
-5. facilitator verifies signature against HyperEVM and settles there
+**final solution:** Implemented x402 protocol from scratch for both client and server (~180 lines total):
 
-**the hack (multi-stage deception):** 
-```javascript
-// step 1: server's 402 response (lies to client)
-network: "base-sepolia",  // fake network for client validation
-asset: "0x2B3...USDC",    // real HyperEVM USDC address
-extra: { actualChainId: 998 }
+**Server** (`demo/server/index.js` ~50 lines):
+- Custom middleware that detects protected endpoints
+- Returns 402 with proper payment requirements
+- Calls Hyper402 facilitator's /verify and /settle
+- Adds X-PAYMENT-RESPONSE header
 
-// step 2: client signs with wallet configured for chain 998
-// EIP-712 signature contains real chainId, so it's valid for HyperEVM
+**Client** (`demo/client/app/hyper402-client.ts` ~130 lines):
+- Detects 402 responses
+- Creates EIP-3009 transferWithAuthorization payload
+- Signs EIP-712 with correct chain ID 998
+- Constructs X-PAYMENT header
+- Retries request with payment
 
-// step 3: server translates before calling facilitator
-paymentPayload.network = "hyperevm-testnet"; // fix the lie
+**why custom implementation won:**
+- ✅ Full control over chain ID and network handling
+- ✅ No fighting with hardcoded library validation
+- ✅ Demonstrates deep x402 protocol understanding
+- ✅ Clean, readable code for judges to review
+- ✅ Proved to be simpler than workarounds
 
-// step 4: facilitator verifies against actual HyperEVM
-```
+**attempted workarounds (all failed):**
+- Deceiving client about network → EIP-712 chain ID mismatch caused signature failures
+- Type casting and @ts-ignore → TypeScript errors persisted
+- Various middleware hacks → libraries too opinionated for custom chains
 
-**why this works:** the EIP-712 signature includes the real chain ID (998) from the user's wallet client - the "network" string is just routing metadata. the cryptographic proof is chain-specific so even though we tell x402-fetch it's "base-sepolia", the actual signature proves payment on HyperEVM
-
-**alternatives considered:**
-
-1. **implement x402 protocol manually in client** (~50-100 lines):
-   - detect 402, create EIP-712 signature, construct X-PAYMENT header
-   - full control, no network restrictions
-   - **rejected:** too time-consuming for hackathon; wanted to reuse battle-tested libraries
-
-2. **fork x402-fetch and remove validation**:
-   - clone x402-fetch repo, strip out network enum validation
-   - publish as `@hyper402/x402-fetch`
-   - **rejected:** adds deployment complexity; hack is simpler for demo
-
-3. **use raw fetch without any x402 libraries**:
-   - manually construct all headers and handle payment flow
-   - maximum flexibility
-   - **rejected:** reinventing the wheel; defeats the purpose of showing x402 protocol adoption
-
-**why the hack was right choice:**
-- reuses proven x402 client libraries
-- demonstrates x402 protocol compatibility
-- fast implementation (hours, not days)
-- highlights the actual limitation clearly
-- the deception is purely in metadata; the cryptographic proof remains valid
-
-for production, option 1 or 2 would be the path forward, but for proving the concept and identifying ecosystem gaps, the workaround was optimal
+**key lesson:** Sometimes it's faster to implement a clean spec yourself than to fight well-intentioned libraries designed for different constraints. The x402 *protocol* is elegant and chain-agnostic; the *libraries* assume a closed ecosystem.
 
 **solution ideas for x402 ecosystem:** x402 packages need architectural changes, which I think the x402 v2 spec is tackling:
 - making network validation extensible (plugin system for custom chains)
@@ -413,6 +404,28 @@ for production, option 1 or 2 would be the path forward, but for proving the con
    - this would benefit the entire ecosystem - but expect x402's in-fight v2 effort should address
 
 **recommendation:** see if option 3 works, then maybe option 2 - for now option 1 is immediately available
+
+### EIP-712 domain parameter differences across chains
+
+**challenge:** USDC contracts on different chains use different EIP-712 domain names, causing signature validation failures.
+
+**finding:** HyperEVM's USDC contract uses:
+- `name: "USDC"` 
+- `version: "2"`
+
+While other chains (like Base) use:
+- `name: "USD Coin"`
+- `version: "2"`
+
+**impact:** Initial signatures failed with "invalid signature" errors because we assumed all USDC deployments used "USD Coin". The EIP-712 signature must match the exact contract's domain parameters.
+
+**solution:** Query the contract directly to get actual values:
+```javascript
+const name = await usdcContract.read.name();    // "USDC" on HyperEVM
+const version = await usdcContract.read.version(); // "2"
+```
+
+**lesson:** Never assume EIP-712 domain parameters - always verify from the contract, especially when bridging to new chains. Small differences break signatures.
 
 ### testnet faucet challenges
 

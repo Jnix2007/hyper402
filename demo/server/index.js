@@ -23,7 +23,7 @@ const USDC_CONFIG = {
   address: "0x2B3370eE501B4a559b57D449569354196457D8Ab",
   decimals: 6,
   eip712: {
-    name: "USD Coin",
+    name: "USDC", // Actual name from HyperEVM testnet USDC contract
     version: "2"
   }
 };
@@ -54,7 +54,7 @@ async function x402Middleware(req, res, next) {
   if (!paymentHeader) {
     const paymentRequirement = {
       scheme: "exact",
-      network: "base-sepolia", // Use base-sepolia to pass x402-fetch validation, actual chain handled by facilitator
+      network: "hyperevm-testnet", // Use real network since we have custom client
       maxAmountRequired: config.amount,
       asset: USDC_CONFIG.address,
       payTo: RECEIVER_WALLET,
@@ -64,9 +64,7 @@ async function x402Middleware(req, res, next) {
       maxTimeoutSeconds: 60,
       extra: {
         name: USDC_CONFIG.eip712.name,
-        version: USDC_CONFIG.eip712.version,
-        actualNetwork: "hyperevm-testnet", // Store real network in extra
-        actualChainId: 998
+        version: USDC_CONFIG.eip712.version
       }
     };
     
@@ -78,9 +76,6 @@ async function x402Middleware(req, res, next) {
   // Payment provided - verify and settle
   try {
     const paymentPayload = JSON.parse(Buffer.from(paymentHeader, 'base64').toString());
-    
-    // Override the network in the payload to match what facilitator expects
-    paymentPayload.network = "hyperevm-testnet";
     
     const paymentRequirements = {
       scheme: "exact",
